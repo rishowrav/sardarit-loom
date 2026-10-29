@@ -645,7 +645,10 @@ export default function VideoPlayer({
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/85 px-6 text-center">
           <AlertIcon width={30} height={30} className="text-amber-400" />
           <p className="max-w-sm text-sm text-white/80">
-            This video could not be loaded. The temporary link may have expired.
+            This video could not be loaded. The temporary link may have expired,
+            or the storage account&apos;s daily read limit is exhausted (it
+            resets at 00:00 GMT). Raising the Backblaze transaction cap restores
+            playback immediately.
           </p>
           <button
             type="button"
