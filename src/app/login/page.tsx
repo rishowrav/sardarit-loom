@@ -1,10 +1,11 @@
 "use client";
 
+import Image from "next/image";
 import { Suspense, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { APP_NAME } from "@/lib/config";
-import { AlertIcon, RecordIcon } from "@/components/icons";
+import { AlertIcon } from "@/components/icons";
 
 type ErrorKind = "credentials" | "account" | "rate" | "network" | "unknown";
 
@@ -73,13 +74,17 @@ function LoginForm() {
     <div className="flex min-h-full flex-1 items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <span className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-600 text-white">
-            <RecordIcon width={22} height={22} />
-          </span>
-          <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-            {APP_NAME}
+          <h1 className="mb-4 flex justify-center">
+            <Image
+              src="/sardarit-loom-logo.png"
+              alt={APP_NAME}
+              width={1362}
+              height={441}
+              priority
+              className="h-16 w-auto"
+            />
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="text-sm text-slate-500">
             Private screen recording studio — sign in to continue.
           </p>
         </div>

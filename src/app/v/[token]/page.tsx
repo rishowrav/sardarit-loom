@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import VideoPlayer from "@/components/VideoPlayer";
-import { RecordIcon } from "@/components/icons";
 import { APP_NAME } from "@/lib/config";
 import { getServerEnv } from "@/lib/env";
 import { isLocalMode, localFileUrl, localFindShared } from "@/lib/local-store";
@@ -75,9 +75,13 @@ export default async function SharedRecordingPage({ params }: SharePageProps) {
     <div className="flex min-h-full flex-1 flex-col bg-slate-100">
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-4xl items-center gap-2 px-4 py-3">
-          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-600 text-white">
-            <RecordIcon width={12} height={12} />
-          </span>
+          <Image
+            src="/sardarit-loom-mark.png"
+            alt={APP_NAME}
+            width={435}
+            height={441}
+            className="h-8 w-auto"
+          />
           <span className="text-sm font-semibold text-slate-900">{APP_NAME}</span>
           <span className="ml-auto text-xs text-slate-400">
             Shared recording — no sign-in needed
@@ -100,6 +104,8 @@ export default async function SharedRecordingPage({ params }: SharePageProps) {
             initialUrl={playbackUrl}
             poster={thumbnailUrl}
             refreshUrl={`/api/share/${token}`}
+            downloadUrl={playbackUrl}
+            durationHint={row.duration_seconds as number | null}
             title={title}
             className="aspect-video w-full rounded-xl bg-black shadow-md ring-1 ring-slate-300"
           />

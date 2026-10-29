@@ -13,12 +13,19 @@ import { TARGET_FPS } from "@/lib/config";
  * the user to keep the tab visible).
  */
 
+export interface CompositorAudio {
+  /** Microphone tracks — cleaned up, compressed and levelled for speech. */
+  mic: MediaStreamTrack[];
+  /** Screen/tab audio — kept as close to the original mix as possible. */
+  system: MediaStreamTrack[];
+}
+
 export interface CompositorOptions {
   width: number;
   height: number;
   display: MediaStream;
   webcam?: MediaStream | null;
-  audioTracks: MediaStreamTrack[];
+  audio: CompositorAudio;
 }
 
 function loadVideo(stream: MediaStream): Promise<HTMLVideoElement> {
@@ -72,7 +79,7 @@ export class ScreenCompositor {
 
   /** Prepares sources and returns the mixed stream ready for MediaRecorder. */
   async start(): Promise<MediaStream> {
-    const { display, webcam, audioTracks } = this.options;
+    const { display, webcam, audio } = this.options;
 
     this.displayVideo = await loadVideo(display);
     if (webcam && webcam.getVideoTracks().length > 0) {
@@ -87,7 +94,7 @@ export class ScreenCompositor {
     const videoTrack = canvasStream.getVideoTracks()[0];
     if (!videoTrack) throw new Error("Could not capture canvas output");
 
-    const mixedAudio = this.mixAudio(audioTracks);
+    const mixedAudio = await this.mixAudio(audio);
     this.outputStream = new MediaStream([
       videoTrack,
       ...mixedAudio.map((t) => t),
@@ -103,30 +110,85 @@ export class ScreenCompositor {
     return this.outputStream;
   }
 
-  private mixAudio(tracks: MediaStreamTrack[]): MediaStreamTrack[] {
-    if (tracks.length === 0) return [];
+  /**
+   * Builds a clean stereo mix:
+   *  mic    → high-pass (kills rumble/hum) → voice compressor → gain
+   *  system → simple trim, no voice processing (keeps original fidelity)
+   *  both   → master limiter (prevents clipping) → destination
+   */
+  private async mixAudio(audio: CompositorAudio): Promise<MediaStreamTrack[]> {
+    const mic = audio.mic.filter((track) => track.readyState === "live");
+    const system = audio.system.filter((track) => track.readyState === "live");
+    if (mic.length === 0 && system.length === 0) return [];
+
     try {
       const AudioCtor =
         window.AudioContext ??
         (window as unknown as { webkitAudioContext?: typeof AudioContext })
           .webkitAudioContext;
       if (!AudioCtor) return [];
-      const audioContext = new AudioCtor();
+
+      let audioContext: AudioContext;
+      try {
+        // 48 kHz matches the capture side and avoids an extra resample.
+        audioContext = new AudioCtor({
+          sampleRate: 48000,
+          latencyHint: "interactive",
+        });
+      } catch {
+        audioContext = new AudioCtor();
+      }
       this.audioContext = audioContext;
 
       const destination = audioContext.createMediaStreamDestination();
-      // Gentle compression keeps mixed levels from clipping.
-      const compressor = audioContext.createDynamicsCompressor();
-      compressor.connect(destination);
 
-      for (const track of tracks) {
+      // Master limiter: keeps the mix from clipping even when the mic and
+      // system audio peak at the same time.
+      const limiter = audioContext.createDynamicsCompressor();
+      limiter.threshold.value = -2;
+      limiter.knee.value = 0;
+      limiter.ratio.value = 20;
+      limiter.attack.value = 0.002;
+      limiter.release.value = 0.15;
+      limiter.connect(destination);
+
+      for (const track of mic) {
         const source = audioContext.createMediaStreamSource(
           new MediaStream([track]),
         );
-        source.connect(compressor);
+        // 90 Hz high-pass removes fan noise, desk thumps and mains hum.
+        const highpass = audioContext.createBiquadFilter();
+        highpass.type = "highpass";
+        highpass.frequency.value = 90;
+        highpass.Q.value = 0.7;
+
+        const compressor = audioContext.createDynamicsCompressor();
+        compressor.threshold.value = -24;
+        compressor.knee.value = 24;
+        compressor.ratio.value = 3;
+        compressor.attack.value = 0.003;
+        compressor.release.value = 0.25;
+
+        const gain = audioContext.createGain();
+        gain.gain.value = 1.15;
+
+        source
+          .connect(highpass)
+          .connect(compressor)
+          .connect(gain)
+          .connect(limiter);
       }
 
-      void audioContext.resume().catch(() => undefined);
+      for (const track of system) {
+        const source = audioContext.createMediaStreamSource(
+          new MediaStream([track]),
+        );
+        const gain = audioContext.createGain();
+        gain.gain.value = 0.85;
+        source.connect(gain).connect(limiter);
+      }
+
+      await audioContext.resume().catch(() => undefined);
       return destination.stream.getAudioTracks();
     } catch {
       return [];
@@ -243,7 +305,8 @@ export class ScreenCompositor {
       ...(this.outputStream?.getTracks() ?? []),
       ...this.options.display.getTracks(),
       ...(this.options.webcam?.getTracks() ?? []),
-      ...this.options.audioTracks,
+      ...this.options.audio.mic,
+      ...this.options.audio.system,
     ];
     for (const track of tracks) {
       try {

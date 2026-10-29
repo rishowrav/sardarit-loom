@@ -53,7 +53,7 @@ export const RECORD_MODES: RecordMode[] = [
   },
 ];
 
-export const AUDIO_BITS_PER_SECOND = 128_000;
+export const AUDIO_BITS_PER_SECOND = 192_000;
 export const TARGET_FPS = 30;
 
 export function getMode(id: string): RecordMode {

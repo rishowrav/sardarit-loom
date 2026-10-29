@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useState } from "react";
@@ -50,14 +51,15 @@ export default function AppShell({ email, usage, localDemo = false, children }: 
     <ToastProvider>
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 sm:px-6">
-          <Link
-            href="/library"
-            className="flex items-center gap-2 font-semibold tracking-tight text-slate-900"
-          >
-            <span className="flex h-7 w-7 items-center justify-center rounded-md bg-indigo-600 text-white">
-              <RecordIcon width={14} height={14} />
-            </span>
-            {APP_NAME}
+          <Link href="/library" className="flex items-center" aria-label={APP_NAME}>
+            <Image
+              src="/sardarit-loom-logo.png"
+              alt={APP_NAME}
+              width={1362}
+              height={441}
+              priority
+              className="h-11 w-auto"
+            />
           </Link>
 
           <nav className="flex items-center gap-1">

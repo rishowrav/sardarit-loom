@@ -206,3 +206,93 @@ export function HardDriveIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function RewindIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M11 6 4.5 12l6.5 6V6z" fill="currentColor" stroke="none" />
+      <path d="M20 6 13.5 12l6.5 6V6z" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+export function ForwardIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M13 6l6.5 6-6.5 6V6z" fill="currentColor" stroke="none" />
+      <path d="M4 6l6.5 6L4 18V6z" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+export function VolumeIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 9.5h3L11 6v12l-4-3.5H4v-5z" fill="currentColor" stroke="none" />
+      <path d="M14.5 9a4 4 0 0 1 0 6" />
+      <path d="M17.2 6.6a7.5 7.5 0 0 1 0 10.8" />
+    </svg>
+  );
+}
+
+export function VolumeMuteIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 9.5h3L11 6v12l-4-3.5H4v-5z" fill="currentColor" stroke="none" />
+      <path d="m15.5 9.5 5 5M20.5 9.5l-5 5" />
+    </svg>
+  );
+}
+
+export function FullscreenIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+    </svg>
+  );
+}
+
+export function ExitFullscreenIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
+    </svg>
+  );
+}
+
+export function PipIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <rect
+        x="12"
+        y="11.5"
+        width="7"
+        height="5.5"
+        rx="1"
+        fill="currentColor"
+        stroke="none"
+      />
+    </svg>
+  );
+}
+
+export function GearIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 2.5v2.8M12 18.7v2.8M2.5 12h2.8M18.7 12h2.8M5.3 5.3l2 2M16.7 16.7l2 2M18.7 5.3l-2 2M7.3 16.7l-2 2" />
+    </svg>
+  );
+}
+
+export function LoopIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="m17 2 4 4-4 4" />
+      <path d="M3 11V9a3 3 0 0 1 3-3h15" />
+      <path d="m7 22-4-4 4-4" />
+      <path d="M21 13v2a3 3 0 0 1-3 3H3" />
+    </svg>
+  );
+}

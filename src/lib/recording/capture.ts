@@ -153,7 +153,15 @@ export async function captureDisplay(
         height: { ideal: height },
         frameRate: { ideal: 30 },
       },
-      audio: true,
+      // Capture system audio untouched: browser voice processing (noise
+      // suppression / AGC) makes shared music and video sound muffled.
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        sampleRate: { ideal: 48000 },
+        channelCount: { ideal: 2 },
+      } as MediaTrackConstraints,
       // @ts-expect-error - Chrome-specific hint, harmless elsewhere
       systemAudio: "include",
       selfBrowserSurface: "exclude",
@@ -236,16 +244,48 @@ export async function captureMicrophone(): Promise<MediaStream> {
   if (!navigator.mediaDevices?.getUserMedia) {
     throw new CaptureError("unsupported", "Microphone capture is not supported here.");
   }
+
+  // 48 kHz mono is the sweet spot for clear speech: it avoids the resampling
+  // artefacts and fake stereo hiss that 44.1 kHz stereo mic captures produce.
+  // `voiceIsolation` (Chrome 116+) is a much stronger denoiser than the old
+  // noiseSuppression flag, but it is not in every browser's constraint set,
+  // so we retry without it instead of failing the whole recording.
+  const base: MediaTrackConstraints = {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+    sampleRate: { ideal: 48000 },
+    channelCount: { ideal: 1 },
+  };
+  const withVoiceIsolation = {
+    ...base,
+    voiceIsolation: true,
+  } as MediaTrackConstraints;
+
   try {
     return await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
+      audio: withVoiceIsolation,
       video: false,
     });
   } catch (error) {
+    const name =
+      error && typeof error === "object" && "name" in error
+        ? String((error as { name: unknown }).name)
+        : "";
+    if (
+      name === "OverconstrainedError" ||
+      name === "NotSupportedError" ||
+      name === "TypeError"
+    ) {
+      try {
+        return await navigator.mediaDevices.getUserMedia({
+          audio: base,
+          video: false,
+        });
+      } catch (retryError) {
+        throw mapMediaError(retryError, "mic");
+      }
+    }
     throw mapMediaError(error, "mic");
   }
 }

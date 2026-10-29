@@ -218,6 +218,8 @@ export default function RecordingDetail({
               initialUrl={playbackUrl}
               poster={thumbnailUrl}
               refreshUrl={`/api/recordings/${recording.id}/playback`}
+              downloadUrl={downloadUrl}
+              durationHint={recording.duration_seconds}
               title={recording.title}
               className="aspect-video w-full rounded-xl bg-black shadow-sm ring-1 ring-slate-200"
             />

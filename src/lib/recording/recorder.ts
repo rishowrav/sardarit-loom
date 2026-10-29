@@ -208,17 +208,15 @@ export class RecordingEngine {
     if (!mimeType) throw new Error("No supported recording codec found.");
     this.mimeType = mimeType;
 
-    const audioTracks = [
-      ...this.mic?.getAudioTracks() ?? [],
-      ...this.display.getAudioTracks(),
-    ];
-
     this.compositor = new ScreenCompositor({
       width: this.mode.width,
       height: this.mode.height,
       display: this.display,
       webcam: this.webcam,
-      audioTracks,
+      audio: {
+        mic: this.mic?.getAudioTracks() ?? [],
+        system: this.display.getAudioTracks(),
+      },
     });
     const stream = await this.compositor.start();
 

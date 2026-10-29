@@ -169,7 +169,18 @@ function LibraryContent({ query: q, rows, cards }: {
       )}
 
       <footer className="mt-10 border-t border-slate-200 pt-4 text-xs text-slate-400">
-        {APP_NAME} — private by design: bucket stays locked, links are temporary.
+        <p>{APP_NAME} — private by design: bucket stays locked, links are temporary.</p>
+        <p className="mt-1">
+          Developed by{" "}
+          <a
+            href="https://github.com/rishowrav"
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium text-slate-500 underline-offset-2 hover:text-slate-700 hover:underline"
+          >
+            Rahemul Islam Showrov
+          </a>
+        </p>
       </footer>
     </>
   );
