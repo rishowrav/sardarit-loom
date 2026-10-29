@@ -1,6 +1,13 @@
 import { before, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { partCount, presignGet, presignPut, isNoSuchUpload, isNotFound } from "@/lib/r2";
+import {
+  partCount,
+  presignGet,
+  presignPut,
+  isCapExceeded,
+  isNoSuchUpload,
+  isNotFound,
+} from "@/lib/r2";
 
 const CHUNK = 8 * 1024 * 1024;
 
@@ -109,10 +116,24 @@ describe("error classifiers", () => {
     assert.equal(isNotFound(error), true);
   });
 
+  it("recognises B2 daily transaction caps", () => {
+    const b2 = Object.assign(new Error("Transaction cap exceeded"), {
+      name: "AccessDenied",
+      $metadata: { httpStatusCode: 403 },
+    });
+    assert.equal(isCapExceeded(b2), true);
+    const native = Object.assign(new Error("denied"), {
+      code: "transaction_cap_exceeded",
+    });
+    assert.equal(isCapExceeded(native), true);
+  });
+
   it("rejects unrelated errors", () => {
     assert.equal(isNotFound(new Error("boom")), false);
     assert.equal(isNoSuchUpload(new Error("boom")), false);
+    assert.equal(isCapExceeded(new Error("boom")), false);
     assert.equal(isNotFound("string"), false);
     assert.equal(isNoSuchUpload(null), false);
+    assert.equal(isCapExceeded(null), false);
   });
 });

@@ -60,6 +60,18 @@ class StaleUploadError extends Error {
   }
 }
 
+/**
+ * Storage reads/listing are capped (Backblaze B2 daily transaction cap) but
+ * writes still work. The session is re-uploaded once so every part ETag is
+ * known, which lets the server finalise without ListParts.
+ */
+class CapExceededError extends Error {
+  constructor() {
+    super("Storage provider transaction cap exceeded");
+    this.name = "CapExceededError";
+  }
+}
+
 class ApiHttpError extends Error {
   constructor(
     readonly status: number,
@@ -143,7 +155,7 @@ async function putChunk(
   url: string,
   chunk: Blob,
   signal: AbortSignal | undefined,
-): Promise<void> {
+): Promise<string> {
   const maxAttempts = 5;
   let lastError: Error | null = null;
 
@@ -155,7 +167,9 @@ async function putChunk(
         body: chunk,
         signal: signal ?? null,
       });
-      if (response.ok) return;
+      if (response.ok) {
+        return (response.headers.get("etag") ?? "").replace(/^"|"$/g, "");
+      }
 
       const text = await response.text().catch(() => "");
       if (
@@ -279,6 +293,7 @@ export async function runUpload(
       chunkSizeBytes: initiated.chunkSizeBytes,
       partCount: initiated.partCount,
       completedParts: [],
+      partEtags: {},
       thumbnailUploaded: false,
       hasBlob: false,
       ...(initiated.local ? { local: true } : {}),
@@ -320,6 +335,7 @@ export async function runUpload(
 
   const activeSession = session;
   let restarted = false;
+  let refreshedForCap = false;
 
   for (;;) {
     try {
@@ -339,6 +355,21 @@ export async function runUpload(
         await reinit(activeSession, signal);
         continue;
       }
+      if (error instanceof CapExceededError) {
+        if (!refreshedForCap) {
+          // Re-upload every part once so the server can finalise from ETags
+          // while the provider's read/listing quota is exhausted.
+          refreshedForCap = true;
+          activeSession.completedParts = [];
+          activeSession.partEtags = {};
+          await saveSession(activeSession);
+          continue;
+        }
+        throw new UploadFailed(
+          "The storage provider's daily transaction cap is exhausted. Raise the cap (Backblaze → Caps & Alerts) or retry after 00:00 GMT — your recording is still saved locally.",
+          true,
+        );
+      }
       throw error;
     }
   }
@@ -356,6 +387,7 @@ function placeholderMeta(input: UploadInput, mimeType: string): UploadSessionMet
     chunkSizeBytes: 0,
     partCount: 1,
     completedParts: [],
+    partEtags: {},
     thumbnailUploaded: false,
     hasBlob: false,
     createdAt: new Date().toISOString(),
@@ -460,10 +492,13 @@ async function uploadParts(
           const end = Math.min(start + session.chunkSizeBytes, blob.size);
           const chunk = blob.slice(start, end);
 
-          await putChunk(url, chunk, localSignal);
+          const etag = await putChunk(url, chunk, localSignal);
           signedUrls.delete(part);
           session.completedParts.push(part);
           session.completedParts.sort((a, b) => a - b);
+          if (etag) {
+            session.partEtags = { ...(session.partEtags ?? {}), [part]: etag };
+          }
           await saveSession(session);
 
           const now = performance.now();
@@ -501,19 +536,48 @@ async function uploadParts(
   return sent;
 }
 
+interface ClientPart {
+  partNumber: number;
+  etag: string;
+}
+
+/** Every part ETag is known only when the whole blob has been uploaded. */
+function clientParts(session: UploadSessionMeta): ClientPart[] | undefined {
+  if (session.completedParts.length !== session.partCount) return undefined;
+  const etags = session.partEtags ?? {};
+  const parts: ClientPart[] = [];
+  for (let part = 1; part <= session.partCount; part++) {
+    const etag = etags[part];
+    if (!etag) return undefined;
+    parts.push({ partNumber: part, etag });
+  }
+  return parts;
+}
+
 async function finalize(
   session: UploadSessionMeta,
   signal?: AbortSignal,
 ): Promise<UploadResult> {
+  const parts = clientParts(session);
   let lastMessage = "";
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       return await api<UploadResult>(
         `/api/uploads/${session.recordingId}/complete`,
-        { body: { sizeBytes: session.sizeBytes }, signal },
+        {
+          body: { sizeBytes: session.sizeBytes, ...(parts ? { parts } : {}) },
+          signal,
+        },
       );
     } catch (error) {
       if (error instanceof UploadAborted) throw error;
+      if (
+        error instanceof ApiHttpError &&
+        error.status === 503 &&
+        /cap/i.test(error.message)
+      ) {
+        throw new CapExceededError();
+      }
       if (error instanceof ApiHttpError && error.status === 410) {
         throw new StaleUploadError();
       }
@@ -551,5 +615,6 @@ async function reinit(
   session.chunkSizeBytes = res.chunkSizeBytes;
   session.partCount = res.partCount;
   session.completedParts = [];
+  session.partEtags = {};
   await saveSession(session);
 }

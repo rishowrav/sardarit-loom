@@ -240,6 +240,30 @@ export function isNoSuchUpload(error: unknown): boolean {
   return e.name === "NoSuchUpload" || e.$metadata?.httpStatusCode === 404;
 }
 
+/**
+ * Backblaze B2 enforces daily transaction caps (spend or free-tier allowance).
+ * When a cap is exhausted, reads/listing fail with 403 while writes keep
+ * working — uploads can still be finalised, so this is worth detecting.
+ */
+export function isCapExceeded(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as {
+    name?: string;
+    message?: string;
+    Code?: string;
+    code?: string;
+  };
+  const combined = [e.name, e.message, e.Code, e.code]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return (
+    combined.includes("transaction cap exceeded") ||
+    combined.includes("transaction_cap_exceeded") ||
+    combined.includes("cap exceeded")
+  );
+}
+
 function sanitizeFilename(name: string): string {
   const cleaned = name.replace(/["\r\n\\]/g, "_").trim() || "recording";
   return cleaned.slice(0, 180);

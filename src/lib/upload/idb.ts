@@ -21,6 +21,8 @@ export interface UploadSessionMeta {
   chunkSizeBytes: number;
   partCount: number;
   completedParts: number[];
+  /** ETag per part, captured from each PUT — lets completion skip ListParts. */
+  partEtags?: Record<number, string>;
   thumbnailUploaded: boolean;
   hasBlob: boolean;
   local?: boolean;

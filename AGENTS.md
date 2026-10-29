@@ -39,7 +39,7 @@ Run lint + typecheck + tests after any change; `npm run build` for anything touc
 
 1. **No service-role key.** Everything DB runs as the signed-in owner under RLS. Public shares go through `SECURITY DEFINER get_shared_recording(p_token)` (created in `supabase/migrations/0001_init.sql`).
 2. **Bucket stays private.** All object access via server-generated presigned URLs (`src/lib/r2.ts`), TTL from `PRESIGN_TTL_SECONDS` (default 6 h). Never make keys public. Store must support S3 multipart (B2 does: `s3.<region>.backblazeb2.com`, SigV4 presign ✓).
-3. **Complete verifies with `ListParts`**, never client ETags; row only flips to `completed` after R2 size == DB `size_bytes`.
+3. **Complete verifies with `ListParts`**, never client ETags; row only flips to `completed` after R2 size == DB `size_bytes`. Exception: when the provider's read/listing quota is capped (B2 daily transaction cap → 403 while writes still work), `complete` accepts the client's persisted part ETags (`partEtags` in IndexedDB) and trusts `size_bytes`, so recordings are never lost to a read cap. Client re-uploads parts once to refresh ETags if a pre-existing session lacks them.
 4. **Cleanup (`src/lib/storage-cleanup.ts`)**: pure `planCleanup()` (only when ≥ limit, oldest completed first, frees to 90%) + `runStorageCleanup()` (R2 delete first, DB delete only for fully-deleted rows; incomplete uploads never auto-deleted).
 5. **Owner lock**: `OWNER_EMAIL` enforced in `src/proxy.ts` + `getOwnerContext()`.
 6. **Single-owner proxy public paths**: `/login`, `/v/*`, `/api/share/*`, `/api/health` — everything else requires the owner session.
