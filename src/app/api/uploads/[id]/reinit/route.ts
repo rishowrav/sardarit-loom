@@ -5,6 +5,7 @@ import { createMultipartUpload, partCount, abortMultipartUpload } from "@/lib/r2
 import { isLocalMode, localChunkSizeBytes, localGetRecording } from "@/lib/local-store";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export async function POST(_request: Request, ctx: IdParams) {
   const { id } = await ctx.params;
