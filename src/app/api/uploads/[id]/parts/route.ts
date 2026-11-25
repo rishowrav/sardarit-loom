@@ -7,6 +7,7 @@ import { isLocalMode, localGetRecording } from "@/lib/local-store";
 import type { SignPartsResponse } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const partsSchema = z.object({
   partNumbers: z
