@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, type NextRequest, after } from "next/server";
 import { z } from "zod";
 import { jsonError, notFound, parseBody, requireOwner, serverErrorMessage, IdParams } from "@/lib/api";
 import {
@@ -40,7 +40,8 @@ const completeSchema = z.object({
  * 1. asks R2 which parts actually landed (self-healing for retries),
  * 2. verifies the byte total matches what the client reported,
  * 3. completes the multipart upload and marks the row completed,
- * 4. runs automatic storage cleanup against the configured limit.
+ * 4. schedules automatic storage cleanup *after* responding, so a busy
+ *    quota never delays the recorded video becoming available.
  */
 export async function POST(
   request: NextRequest,
@@ -156,38 +157,25 @@ export async function POST(
       .eq("id", row.id);
     if (updateError) throw new Error(updateError.message);
 
-    // Automatic quota cleanup — failures must never lose the new recording.
-    let cleanup: CompleteUploadResponse["cleanup"] = {
-      deletedCount: 0,
-      freedBytes: 0,
-      errors: [],
-    };
-    let storage: CompleteUploadResponse["storage"] = {
-      usedBytes: 0,
-      limitBytes: 0,
-      completedCount: 0,
-    };
-    try {
-      const result = await runStorageCleanup(supabase);
-      cleanup = {
-        deletedCount: result.deletedCount,
-        freedBytes: result.freedBytes,
-        errors: result.errors,
-      };
-      storage = {
-        usedBytes: result.usedBytes,
-        limitBytes: result.limitBytes,
-        completedCount: 0,
-      };
-    } catch (cleanupError) {
-      cleanup.errors = [serverErrorMessage(cleanupError)];
-    }
+    // The row is already marked completed above. Quota cleanup used to run
+    // *before* this response was sent, so the client kept waiting ("uploaded
+    // but not live") while old objects were deleted. `after()` detaches it
+    // while keeping the work alive after the response on serverless hosts.
+    after(async () => {
+      try {
+        await runStorageCleanup(supabase);
+      } catch {
+        // Cleanup must never turn an already-completed upload into a failure.
+      }
+    });
 
     const response: CompleteUploadResponse = {
       recordingId: row.id,
       sizeBytes: totalSize,
-      storage,
-      cleanup,
+      // Cleanup now happens after the response, so there is nothing to
+      // report yet. The settings page recomputes usage on demand.
+      storage: { usedBytes: 0, limitBytes: 0, completedCount: 0 },
+      cleanup: { deletedCount: 0, freedBytes: 0, errors: [] },
     };
     return NextResponse.json(response);
   } catch (error) {
