@@ -15,6 +15,12 @@ import { isLocalMode, localCompleteUpload, localGetRecording, localUsage, localC
 import type { CompleteUploadResponse } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+/**
+ * Completion does auth + DB reads + ListParts + CompleteMultipartUpload across
+ * regions. The Vercel default (10 s) can cut the connection before the client
+ * gets a response, which shows up as "Failed to fetch" in the browser.
+ */
+export const maxDuration = 60;
 
 /**
  * Optional client-supplied part list. Only used when the storage provider's
