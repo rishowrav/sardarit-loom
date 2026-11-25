@@ -6,7 +6,6 @@ import {
   captureMicrophone,
   captureWebcam,
   hasDisplayCapture,
-  isCaptureError,
 } from "@/lib/recording/capture";
 import { pickMimeType } from "@/lib/recording/codecs";
 import { ScreenCompositor } from "@/lib/recording/compositor";
