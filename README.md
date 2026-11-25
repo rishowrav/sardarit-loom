@@ -148,6 +148,21 @@ tests/                              # unit tests (node:test via tsx)
 - **Storage**: bucket stays private; the browser only ever sees short-lived presigned URLs scoped to a single object/part.
 - **Secrets**: `R2_SECRET_ACCESS_KEY` (storage key) and everything non-`NEXT_PUBLIC_` stays server-side.
 
+## Troubleshooting: uploads work but videos won't play
+
+Backblaze B2 enforces a **daily transaction cap** (Caps & Alerts). When it is
+exhausted, writes (uploads) continue to work but every read — playback,
+downloads, thumbnails, even the storage listing — fails with
+`403 Transaction cap exceeded`. This looks like a broken video in the app,
+but the file is intact.
+
+- Diagnose: `GET /api/health?check=storage` → `storage.capExceeded: true` (HTTP 503).
+- Fix now: Backblaze console → **Caps & Alerts** → raise the transaction cap.
+- Fix otherwise: the cap resets at **00:00 GMT**. No data is lost; playback
+  works again as soon as reads are allowed.
+- To avoid this recurring with frequent recording/testing, raise the cap or
+  switch the bucket to a store without per-transaction caps (Cloudflare R2).
+
 ## Known limitations
 
 - **Background tabs** can freeze captured frames (browser throttling). The app warns you while recording and holds a screen wake lock, but keep the tab visible.
