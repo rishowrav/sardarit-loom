@@ -82,8 +82,14 @@ class ApiHttpError extends Error {
   }
 }
 
-const CONCURRENCY = 2;
-const SIGN_AHEAD = 8;
+/**
+ * Several chunks in flight at once — the old value of 2 left most of the
+ * connection idle and made even short recordings crawl. Browser cursors are
+ * fine with this many parallel PUTs to a single storage host.
+ */
+const CONCURRENCY = 6;
+/** Sign a whole batch up front so ~100 parts need one API call, not 100. */
+const SIGN_AHEAD = 100;
 
 /**
  * MediaRecorder blobs carry codec parameters (e.g.
@@ -221,8 +227,8 @@ export interface RunUploadOptions {
 
 /**
  * Chunked, resumable upload driver:
- *  - multipart URLs are requested a few parts ahead of the transfer,
- *  - two chunks upload in parallel with per-chunk retry/backoff,
+ *  - multipart URLs are requested in large batches ahead of the transfer,
+ *  - several chunks upload in parallel with per-chunk retry/backoff,
  *  - progress survives crashes via IndexedDB, so a failed or closed session
  *    can be resumed without re-recording,
  *  - an expired R2 multipart session triggers one transparent re-start.
@@ -235,6 +241,13 @@ export async function runUpload(
   const mimeType = normalizeMimeType(input.blob.type);
 
   let session = options.existing ?? null;
+  /**
+   * Persisting a large blob to IndexedDB used to happen *before* the first
+   * byte was uploaded. On slow disks that alone delayed every upload by tens
+   * of seconds. It now runs alongside the transfer and is only awaited when
+   * the session is finished or fails, so resumability is preserved.
+   */
+  let blobSaved: Promise<boolean> | null = null;
 
   if (session && session.sizeBytes !== input.blob.size) {
     // The stored session doesn't match this blob — discard it and start over.
@@ -302,32 +315,36 @@ export async function runUpload(
 
     await saveSession(session);
     options.onSessionCreated?.(session.recordingId);
-    const blobStored = await saveBlob(session.recordingId, input.blob);
-    session.hasBlob = blobStored;
-    await saveSession(session);
 
-    // Thumbnail: best-effort, never blocks the video upload.
+    // Start the IndexedDB write now, but do not wait for it — the upload can
+    // begin immediately. The promise is awaited before cleanup/failure.
+    blobSaved = saveBlob(session.recordingId, input.blob);
+
+    // Thumbnail: best-effort, never blocks the video upload. The session is
+    // deliberately not re-saved here: a late write after deleteSession()
+    // would leave an orphaned resume record. Re-uploading a tiny JPEG on a
+    // retry is harmless.
     if (input.thumbnail && !session.thumbnailUploaded) {
-    try {
-      const { url } = session.local
-        ? { url: `/api/local-thumbnail/${session.recordingId}` }
-        : await api<{ url: string }>(
-            `/api/uploads/${session.recordingId}/thumbnail`,
-            { signal },
-          );
-        const put = await fetch(url, {
-          method: "PUT",
-          headers: { "Content-Type": "image/jpeg" },
-          body: input.thumbnail,
-          signal: signal ?? null,
-        });
-        if (put.ok) {
-          session.thumbnailUploaded = true;
-          await saveSession(session);
+      const recordingId = session.recordingId;
+      const local = session.local === true;
+      void (async () => {
+        try {
+          const url = local
+            ? `/api/local-thumbnail/${recordingId}`
+            : (await api<{ url: string }>(
+                `/api/uploads/${recordingId}/thumbnail`,
+                { signal },
+              )).url;
+          await fetch(url, {
+            method: "PUT",
+            headers: { "Content-Type": "image/jpeg" },
+            body: input.thumbnail,
+            signal: signal ?? null,
+          });
+        } catch {
+          // Ignore — placeholder thumbnail in the library.
         }
-      } catch {
-        // Ignore — placeholder thumbnail in the library.
-      }
+      })();
     }
   } else {
     emit("preparing", sizeOfCompleted(session), 0, session);
@@ -346,10 +363,17 @@ export async function runUpload(
         emit("finalizing", sizeBytes, 0, activeSession);
         const result = await finalize(activeSession, signal);
         emit("done", sizeBytes, 0, activeSession);
+        // By now the background IndexedDB write is long finished; awaiting it
+        // avoids a late write recreating a session we are about to delete.
+        if (blobSaved) await blobSaved.catch(() => false);
         await deleteSession(activeSession.recordingId);
         return result;
       });
     } catch (error) {
+      if (blobSaved) {
+        activeSession.hasBlob = await blobSaved.catch(() => false);
+        await saveSession(activeSession);
+      }
       if (error instanceof StaleUploadError && !restarted) {
         restarted = true;
         await reinit(activeSession, signal);
@@ -422,7 +446,9 @@ async function uploadParts(
   const signedUrls = new Map<number, string>();
 
   const ensureSigned = async (parts: number[], reqSignal: AbortSignal) => {
-    const missing = parts.filter((p) => !signedUrls.has(p)).slice(0, 50);
+    // One request per batch instead of one per part — each call also runs an
+    // auth check and signs URLs on the server.
+    const missing = parts.filter((p) => !signedUrls.has(p)).slice(0, 100);
     if (missing.length === 0) return;
     let lastError: unknown = null;
     for (let attempt = 1; attempt <= 3; attempt++) {
