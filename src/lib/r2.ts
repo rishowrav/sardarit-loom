@@ -5,6 +5,7 @@ import {
   DeleteObjectCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
   ListPartsCommand,
   PutObjectCommand,
   S3Client,
@@ -245,6 +246,13 @@ export function isNoSuchUpload(error: unknown): boolean {
  * When a cap is exhausted, reads/listing fail with 403 while writes keep
  * working — uploads can still be finalised, so this is worth detecting.
  */
+/** Cheap read probe used by diagnostics (one listing request). */
+export async function probeStorageRead(): Promise<void> {
+  await r2().send(
+    new ListObjectsV2Command({ Bucket: bucket(), MaxKeys: 1 }),
+  );
+}
+
 export function isCapExceeded(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const e = error as {
