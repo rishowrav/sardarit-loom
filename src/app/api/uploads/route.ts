@@ -7,6 +7,7 @@ import { createMultipartUpload, partCount } from "@/lib/r2";
 import type { InitiateUploadResponse } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const initiateSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
