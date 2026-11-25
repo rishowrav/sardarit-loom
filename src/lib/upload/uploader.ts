@@ -621,6 +621,17 @@ async function finalize(
         }
         throw new UploadFailed(`Could not finalise the upload: ${lastMessage}`, true);
       }
+      if (error instanceof UploadFailed && error.resumable) {
+        // Network errors (including a dropped connection when a serverless
+        // function hits its time limit) are worth retrying — all chunks are
+        // already stored, so this only re-sends the small completion request.
+        lastMessage = error.message;
+        if (attempt < 3) {
+          await sleep(1000 * attempt, signal);
+          continue;
+        }
+        break;
+      }
       if (error instanceof UploadFailed) throw error;
       lastMessage = error instanceof Error ? error.message : String(error);
       if (attempt === 3) break;
